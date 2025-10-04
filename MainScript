@@ -1,1 +1,137 @@
+-- MainScript.lua
 
+local Utils = require(script.Parent.Modules.Utils)
+local Core = require(script.Parent.Modules.CoreFunctions)
+local GUIBuilder = require(script.Parent.Modules.GUIBuilder)
+local Connections = require(script.Parent.Modules.TogglesAndButtons)
+
+local lp = Utils.LocalPlayer
+local core = Utils.PlayerGui
+local rs = Utils.Services.RunService
+local ws = Utils.Services.Workspace
+local tweenservice = Utils.Services.TweenService
+local mouse = Utils.Mouse
+
+-- G2L: Tabela principal da GUI (Manter para compatibilidade com o script original)
+local G2L = {}
+local fast = Utils.FastTweenInfo
+
+-- 1. GUI Setup (Adaptado do seu código original)
+-- (O código G2L["1"] até G2L["15"] deve ser incluído aqui)
+-- ... Inclua seu código G2L["1"] até G2L["15"] aqui ...
+
+G2L["1"] = Instance.new("ScreenGui", core)
+G2L["1"]["IgnoreGuiInset"] = true
+G2L["1"]["DisplayOrder"] = 999
+G2L["1"]["ResetOnSpawn"] = false
+-- ... e os outros elementos G2L["2"] a G2L["15"]
+-- ... (Para o executor, você provavelmente manterá esses longos blocos) ...
+
+-- Exemplo:
+G2L["2"] = Instance.new("Frame", G2L["1"])
+G2L["2"]["BackgroundColor3"] = Color3.fromRGB(35, 35, 35)
+G2L["2"]["AnchorPoint"] = Vector2.new(0.5, 0.5)
+G2L["2"]["Size"] = UDim2.new(0.3, 0, 0.5, 0)
+G2L["2"]["Position"] = UDim2.new(0.5, 0, 0.5, 0)
+G2L["2"]["BorderSizePixel"] = 0
+-- ... (E todos os outros) ...
+
+-- 2. Setup do Status Label
+local statusLabel = GUIBuilder.createStatusLabel(G2L["11"])
+
+-- 3. Funcionalidade de Minimize e Drag (mantidas no MainScript)
+local function minim()
+    Core.minimizebool = not Core.minimizebool
+    if Core.minimizebool then
+        G2L["2"].Visible = false
+        G2L["13"].Visible = true
+        tweenservice:Create(G2L["2"], fast, {Size = UDim2.new(0, 0, 0, 0)}):Play()
+        tweenservice:Create(G2L["13"], fast, {Size = UDim2.new(0.05, 0, 0.08, 0)}):Play()
+    else
+        G2L["2"].Visible = true
+        G2L["13"].Visible = false
+        tweenservice:Create(G2L["2"], fast, {Size = UDim2.new(0.3, 0, 0.5, 0)}):Play()
+        tweenservice:Create(G2L["13"], fast, {Size = UDim2.new(0, 0, 0, 0)}):Play()
+    end
+end
+G2L["9"].MouseButton1Click:Connect(minim)
+G2L["15"].MouseButton1Click:Connect(minim)
+-- ... Lógica de Drag G2L["4"].InputBegan/Changed/Ended ...
+
+-- 4. Setup dos Botões e Toggles
+local followToggle = Connections.setup(G2L, statusLabel, function(state) 
+    if followToggle and followToggle.switch then 
+        followToggle.switch(state) 
+    end 
+end)
+-- O módulo Connections agora adiciona todos os botões e toggles ao G2L["11"]
+
+-- 5. Lógica de Clique (Seleção e Mover)
+mouse.Button1Down:Connect(function()
+    if Core.clicknpc or Core.clickToMove then
+        local unitRay = ws.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y)
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        raycastParams.FilterDescendantsInstances = {lp.Character or lp}
+        local raycastResult = ws:Raycast(unitRay.Origin, unitRay.Direction * 100, raycastParams) -- 100 é selectionRange
+        
+        if raycastResult and raycastResult.Instance then
+            local model = raycastResult.Instance:FindFirstAncestorOfClass("Model")
+            local isNPCModel = model and Utils.isNPC(model) and Utils.hasNetworkOwnership(model)
+            
+            if Core.clickToMove and not isNPCModel then
+                -- Movimento ao clique
+                local targetPos = raycastResult.Position
+                Core.applyToSelectedNPCs(function(npc)
+                    local hum = npc:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        hum:MoveTo(targetPos)
+                        Utils.lightNPC(npc, Color3.fromRGB(0, 150, 255)) 
+                    end
+                end, statusLabel)
+            elseif Core.clicknpc and isNPCModel then
+                -- Seleção de NPC
+                if not table.find(Core.selectedNPCs, model) then
+                    table.insert(Core.selectedNPCs, model)
+                    statusLabel.Text = "NPCs: " .. #Core.selectedNPCs .. " selecionados"
+                    statusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+                    Utils.lightNPC(model, Color3.fromRGB(0, 255, 0))
+                end
+            elseif Core.clicknpc then
+                -- Feedback de clique inválido 
+                statusLabel.Text = "NPCs: Inválido ou sem ownership"
+                statusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                if model then
+                    Utils.lightNPC(model, Color3.fromRGB(255, 0, 0))
+                end
+            end
+        end
+    end
+end)
+
+-- 6. Network ownership (simulação de raio)
+rs.RenderStepped:Connect(function()
+    if sethiddenproperty then
+        sethiddenproperty(lp, "SimulationRadius", Core.rad)
+    else
+        lp.SimulationRadius = Core.rad
+    end
+end)
+
+-- 7. Close button (desconexão)
+G2L["7"].MouseButton1Click:Connect(function()
+    for _, connection in pairs(Core.connections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    -- Lógica de restauração do personagem principal
+    if Core.chr then
+        lp.Character = Core.chr
+        ws.CurrentCamera.CameraSubject = Core.chr:FindFirstChild("Humanoid")
+    end
+    G2L["1"]:Destroy()
+end)
+
+-- Mostrar GUI
+G2L["1"].Parent = core
